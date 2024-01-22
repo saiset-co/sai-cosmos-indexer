@@ -6,43 +6,43 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-func (is *InternalService) loadWallets() error {
-	fileBytes, err := os.ReadFile(filePathWallets)
+func (is *InternalService) loadAddresses() error {
+	fileBytes, err := os.ReadFile(filePathAddresses)
 	if err != nil {
 		return err
 	}
 
-	var walletsArray []string
-	err = jsoniter.Unmarshal(fileBytes, &walletsArray)
+	var addressArray []string
+	err = jsoniter.Unmarshal(fileBytes, &addressArray)
 	if err != nil {
 		return err
 	}
 
 	is.mu.Lock()
-	for _, wallet := range walletsArray {
-		is.wallets[wallet] = struct{}{}
+	for _, address := range addressArray {
+		is.addresses[address] = struct{}{}
 	}
 	is.mu.Unlock()
 
 	return nil
 }
 
-func (is *InternalService) rewriteWalletsFile() error {
-	walletsArray := make([]string, len(is.wallets))
+func (is *InternalService) rewriteAddressesFile() error {
+	addressArray := make([]string, len(is.addresses))
 	is.mu.Lock()
 	i := 0
-	for k, _ := range is.wallets {
-		walletsArray[i] = k
+	for k, _ := range is.addresses {
+		addressArray[i] = k
 		i++
 	}
 	is.mu.Unlock()
 
-	walletsBytes, err := jsoniter.Marshal(&walletsArray)
+	jsonBytes, err := jsoniter.Marshal(&addressArray)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(filePathWallets, walletsBytes, os.ModePerm)
+	err = os.WriteFile(filePathAddresses, jsonBytes, os.ModePerm)
 
 	return err
 }

@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	filePathWallets       = "./wallets"
+	filePathAddresses     = "./addresses.json"
 	filePathServiceConfig = "./service_config.json"
-	filePathLatestBlock   = "./latest_handled_block.json"
+	filePathLatestBlock   = "./latest_handled_block"
 )
 
 type InternalService struct {
@@ -28,7 +28,7 @@ type InternalService struct {
 	config       model.ServiceConfig
 	currentBlock int64
 	client       http.Client
-	wallets      map[string]struct{}
+	addresses    map[string]struct{}
 	storage      saiStorageUtil.Database
 }
 
@@ -37,7 +37,7 @@ func (is *InternalService) Init() {
 	is.client = http.Client{
 		Timeout: 5 * time.Second,
 	}
-	is.wallets = make(map[string]struct{})
+	is.addresses = make(map[string]struct{})
 
 	fileBytes, err := os.ReadFile(filePathServiceConfig)
 	if err != nil {
@@ -51,7 +51,7 @@ func (is *InternalService) Init() {
 
 	is.storage = saiStorageUtil.Storage(is.config.Storage.URL, is.config.Storage.Email, is.config.Storage.Token)
 
-	err = is.loadWallets()
+	err = is.loadAddresses()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Println(err)
 	}
@@ -82,7 +82,7 @@ func (is *InternalService) Process() {
 			log.Println("saiCosmosIndexer loop is done")
 			return
 		default:
-			if len(is.wallets) == 0 {
+			if len(is.addresses) == 0 {
 				time.Sleep(time.Second * time.Duration(is.config.SleepDuration))
 				continue
 			}
@@ -130,8 +130,8 @@ func (is *InternalService) handleBlockTxs() error {
 		from := txRes.Tx.Body.Messages[0].FromAddress
 		amount := txRes.Tx.Body.Messages[0].Amount[0].Amount
 
-		_, isReceiver := is.wallets[to]
-		_, isSender := is.wallets[from]
+		_, isReceiver := is.addresses[to]
+		_, isSender := is.addresses[from]
 		if !isReceiver && !isSender {
 			continue
 		}

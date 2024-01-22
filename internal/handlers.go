@@ -8,67 +8,67 @@ import (
 
 func (is *InternalService) NewHandler() saiService.Handler {
 	return saiService.Handler{
-		"add_wallet": saiService.HandlerElement{
-			Name:        "add_wallet",
-			Description: "Add new wallet for scan transactions",
+		"add_address": saiService.HandlerElement{
+			Name:        "add_address",
+			Description: "Add new address for scan transactions",
 			Function: func(data, meta interface{}) (interface{}, int, error) {
-				return is.addWallet(data)
+				return is.addAddress(data)
 			},
 		},
-		"delete_wallet": saiService.HandlerElement{
-			Name:        "delete_wallet",
-			Description: "Delete wallet from wallets list",
+		"delete_address": saiService.HandlerElement{
+			Name:        "delete_address",
+			Description: "Delete address from addresses list",
 			Function: func(data, meta interface{}) (interface{}, int, error) {
-				return is.deleteWallet(data)
+				return is.deleteAddress(data)
 			},
 		},
 	}
 }
 
-func (is *InternalService) addWallet(data interface{}) (string, int, error) {
-	wallet, ok := data.(string)
+func (is *InternalService) addAddress(data interface{}) (string, int, error) {
+	address, ok := data.(string)
 	if !ok {
-		return "wallet should be a string", http.StatusBadRequest, nil
+		return "address should be a string", http.StatusBadRequest, nil
 	}
-	_, exist := is.wallets[wallet]
+	_, exist := is.addresses[address]
 	if exist {
-		return "addWallet", http.StatusOK, nil
+		return "addAddress", http.StatusOK, nil
 	}
 
 	is.mu.Lock()
-	is.wallets[wallet] = struct{}{}
+	is.addresses[address] = struct{}{}
 	is.mu.Unlock()
 
-	err := is.rewriteWalletsFile()
+	err := is.rewriteAddressesFile()
 	if err != nil {
 		is.mu.Lock()
-		delete(is.wallets, wallet)
+		delete(is.addresses, address)
 		is.mu.Unlock()
-		return "addWallet", http.StatusInternalServerError, err
+		return "addAddress", http.StatusInternalServerError, err
 	}
 
-	return "addWallet", http.StatusOK, nil
+	return "addAddress", http.StatusOK, nil
 }
 
-func (is *InternalService) deleteWallet(data interface{}) (string, int, error) {
-	wallet, ok := data.(string)
+func (is *InternalService) deleteAddress(data interface{}) (string, int, error) {
+	address, ok := data.(string)
 	if !ok {
-		return "wallet should be a string", http.StatusBadRequest, nil
+		return "address should be a string", http.StatusBadRequest, nil
 	}
 
-	_, exist := is.wallets[wallet]
+	_, exist := is.addresses[address]
 	if !exist {
-		return "deleteWallet", http.StatusOK, nil
+		return "deleteAddress", http.StatusOK, nil
 	}
 
 	is.mu.Lock()
-	delete(is.wallets, wallet)
+	delete(is.addresses, address)
 	is.mu.Unlock()
 
-	err := is.rewriteWalletsFile()
+	err := is.rewriteAddressesFile()
 	if err != nil {
-		return "deleteWallet", http.StatusInternalServerError, err
+		return "deleteAddress", http.StatusInternalServerError, err
 	}
 
-	return "deleteWallet", http.StatusOK, nil
+	return "deleteAddress", http.StatusOK, nil
 }
