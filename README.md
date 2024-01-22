@@ -14,7 +14,7 @@ You can specific port for http or ws protocol if you need.
 is intended to indicate storage authorization data and the name
 of the collection for storing information about transactions.
 
-- `node_address` - node address doe API calls
+- `node_address` - node address for API calls
 - `start_block` - start block height
 - `tx_type` - transactions type for scanning
 - `sleep_duration` - sleep duration between loop iteration(in seconds)
