@@ -2,18 +2,19 @@ package internal
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/saiset-co/sai-service-crud-plus/logger"
 	"github.com/saiset-co/saiCosmosIndexer/internal/model"
 	"github.com/saiset-co/saiService"
 	"github.com/saiset-co/saiStorageUtil"
 	"github.com/spf13/cast"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.uber.org/zap"
 )
 
 const (
@@ -52,18 +53,18 @@ func (is *InternalService) Init() {
 
 	err := is.loadAddresses()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Println(err)
+		logger.Logger.Error("loadAddresses", zap.Error(err))
 	}
 
 	fileBytes, err := os.ReadFile(filePathLatestBlock)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			log.Println(err)
+			logger.Logger.Error("can't read "+filePathLatestBlock, zap.Error(err))
 		}
 	} else {
 		latestHandledBlock, err := strconv.Atoi(string(fileBytes))
 		if err != nil {
-			log.Println(err)
+			logger.Logger.Error("strconv.Atoi", zap.Error(err))
 		}
 
 		is.currentBlock = int64(latestHandledBlock)
@@ -81,7 +82,7 @@ func (is *InternalService) Process() {
 	for {
 		select {
 		case <-is.Context.Context.Done():
-			log.Println("saiCosmosIndexer loop is done")
+			logger.Logger.Debug("saiCosmosIndexer loop is done")
 			return
 		default:
 			if len(is.addresses) == 0 {
@@ -91,7 +92,7 @@ func (is *InternalService) Process() {
 
 			latestBlockHeight, err := is.getLatestBlock()
 			if err != nil {
-				log.Println(err)
+				logger.Logger.Error("getLatestBlock", zap.Error(err))
 				time.Sleep(time.Second * sleepDuration)
 				continue
 			}
@@ -103,7 +104,7 @@ func (is *InternalService) Process() {
 
 			err = is.handleBlockTxs()
 			if err != nil {
-				log.Println(err)
+				logger.Logger.Error("handleBlockTxs", zap.Error(err))
 				time.Sleep(time.Second * sleepDuration)
 				continue
 			}

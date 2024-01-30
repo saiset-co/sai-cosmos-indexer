@@ -1,13 +1,17 @@
 module github.com/saiset-co/saiCosmosIndexer
 
-go 1.21
+go 1.21.1
+
+toolchain go1.21.6
 
 require (
 	github.com/json-iterator/go v1.1.12
+	github.com/saiset-co/sai-service-crud-plus v0.0.0-20240126102508-5bab343d26fe
 	github.com/saiset-co/saiService v1.0.1
 	github.com/saiset-co/saiStorageUtil v0.0.0-20211116145539-d076f92cb2fb
 	github.com/spf13/cast v1.6.0
 	go.mongodb.org/mongo-driver v1.7.4
+	go.uber.org/zap v1.26.0
 )
 
 require (
@@ -27,7 +31,6 @@ require (
 	github.com/urfave/cli/v2 v2.27.1 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/net v0.20.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
