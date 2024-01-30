@@ -9,17 +9,16 @@ import (
 	"sync"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/saiset-co/saiCosmosIndexer/internal/model"
 	"github.com/saiset-co/saiService"
 	"github.com/saiset-co/saiStorageUtil"
+	"github.com/spf13/cast"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
 const (
-	filePathAddresses     = "./addresses.json"
-	filePathServiceConfig = "./service_config.json"
-	filePathLatestBlock   = "./latest_handled_block"
+	filePathAddresses   = "./addresses.json"
+	filePathLatestBlock = "./latest_handled_block"
 )
 
 type InternalService struct {
@@ -33,30 +32,30 @@ type InternalService struct {
 }
 
 func (is *InternalService) Init() {
+	is.Context.GetConfig("storage.mongo_collection_name", "")
+
 	is.mu = &sync.Mutex{}
 	is.client = http.Client{
 		Timeout: 5 * time.Second,
 	}
 	is.addresses = make(map[string]struct{})
+	is.storage = saiStorageUtil.Storage(
+		cast.ToString(is.Context.GetConfig("storage.url", "")),
+		cast.ToString(is.Context.GetConfig("storage.email", "")),
+		cast.ToString(is.Context.GetConfig("storage.token", "")),
+	)
 
-	fileBytes, err := os.ReadFile(filePathServiceConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
+	is.config.TxType = cast.ToString(is.Context.GetConfig("tx_type", ""))
+	is.config.NodeAddress = cast.ToString(is.Context.GetConfig("node_address", ""))
+	is.config.CollectionName = cast.ToString(is.Context.GetConfig("storage.mongo_collection_name", ""))
+	is.config.SkipFailedTxs = cast.ToBool(is.Context.GetConfig("skip_failed_tx", false))
 
-	err = jsoniter.Unmarshal(fileBytes, &is.config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	is.storage = saiStorageUtil.Storage(is.config.Storage.URL, is.config.Storage.Email, is.config.Storage.Token)
-
-	err = is.loadAddresses()
+	err := is.loadAddresses()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Println(err)
 	}
 
-	fileBytes, err = os.ReadFile(filePathLatestBlock)
+	fileBytes, err := os.ReadFile(filePathLatestBlock)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Println(err)
@@ -70,12 +69,15 @@ func (is *InternalService) Init() {
 		is.currentBlock = int64(latestHandledBlock)
 	}
 
-	if is.currentBlock < is.config.StartBlock {
-		is.currentBlock = is.config.StartBlock
+	startBlock := cast.ToInt64(is.Context.GetConfig("start_block", 0))
+	if is.currentBlock < startBlock {
+		is.currentBlock = startBlock
 	}
 }
 
 func (is *InternalService) Process() {
+	sleepDuration := cast.ToDuration(is.Context.GetConfig("sleep_duration", 2))
+
 	for {
 		select {
 		case <-is.Context.Context.Done():
@@ -83,26 +85,26 @@ func (is *InternalService) Process() {
 			return
 		default:
 			if len(is.addresses) == 0 {
-				time.Sleep(time.Second * time.Duration(is.config.SleepDuration))
+				time.Sleep(time.Second * sleepDuration)
 				continue
 			}
 
 			latestBlockHeight, err := is.getLatestBlock()
 			if err != nil {
 				log.Println(err)
-				time.Sleep(time.Second * time.Duration(is.config.SleepDuration))
+				time.Sleep(time.Second * sleepDuration)
 				continue
 			}
 
 			if is.currentBlock >= latestBlockHeight {
-				time.Sleep(time.Second * time.Duration(is.config.SleepDuration))
+				time.Sleep(time.Second * sleepDuration)
 				continue
 			}
 
 			err = is.handleBlockTxs()
 			if err != nil {
 				log.Println(err)
-				time.Sleep(time.Second * time.Duration(is.config.SleepDuration))
+				time.Sleep(time.Second * sleepDuration)
 				continue
 			}
 
@@ -159,7 +161,7 @@ func (is *InternalService) handleBlockTxs() error {
 }
 
 func (is *InternalService) sendTxsToStorage(tx bson.M) error {
-	err, _ := is.storage.Put(is.config.Storage.CollectionName, tx)
+	err, _ := is.storage.Put(is.config.CollectionName, tx)
 
 	return err
 }
