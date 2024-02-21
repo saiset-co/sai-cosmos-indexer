@@ -1,0 +1,20 @@
+common:
+  http:
+    enabled: true
+    port: 8080
+  ws:
+    enabled: false
+    port: 8081
+
+test: " TEST"
+storage:
+  token: "token"
+  url: "url"
+  email: "email"
+  password: "pass"
+  mongo_collection_name: "col_name"
+
+node_address: "https://sone-node.com"
+start_block: 0
+tx_type: "/cosmos.bank.v1beta1.MsgSend"
+sleep_duration: 2
