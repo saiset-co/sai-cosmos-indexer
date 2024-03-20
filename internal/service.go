@@ -1,19 +1,22 @@
 package internal
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
+	"github.com/saiset-co/sai-storage-mongo/external/adapter"
+
 	"github.com/saiset-co/sai-service-crud-plus/logger"
 	"github.com/saiset-co/saiCosmosIndexer/internal/model"
 	"github.com/saiset-co/saiService"
-	"github.com/saiset-co/saiStorageUtil"
 	"github.com/spf13/cast"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.uber.org/zap"
 )
 
@@ -23,33 +26,32 @@ const (
 )
 
 type InternalService struct {
-	mu           *sync.Mutex
-	Context      *saiService.Context
-	config       model.ServiceConfig
-	currentBlock int64
-	client       http.Client
-	addresses    map[string]struct{}
-	storage      saiStorageUtil.Database
+	mu            *sync.Mutex
+	Context       *saiService.Context
+	config        model.ServiceConfig
+	currentBlock  int64
+	client        http.Client
+	addresses     map[string]struct{}
+	storageConfig model.StorageConfig
 }
 
 func (is *InternalService) Init() {
-	is.Context.GetConfig("storage.mongo_collection_name", "")
-
 	is.mu = &sync.Mutex{}
 	is.client = http.Client{
 		Timeout: 5 * time.Second,
 	}
 	is.addresses = make(map[string]struct{})
-	is.storage = saiStorageUtil.Storage(
-		cast.ToString(is.Context.GetConfig("storage.url", "")),
-		cast.ToString(is.Context.GetConfig("storage.email", "")),
-		cast.ToString(is.Context.GetConfig("storage.token", "")),
-	)
-
 	is.config.TxType = cast.ToString(is.Context.GetConfig("tx_type", ""))
 	is.config.NodeAddress = cast.ToString(is.Context.GetConfig("node_address", ""))
 	is.config.CollectionName = cast.ToString(is.Context.GetConfig("storage.mongo_collection_name", ""))
 	is.config.SkipFailedTxs = cast.ToBool(is.Context.GetConfig("skip_failed_tx", false))
+	is.storageConfig = model.StorageConfig{
+		Token:      cast.ToString(is.Context.GetConfig("storage.token", "")),
+		Url:        cast.ToString(is.Context.GetConfig("storage.url", "")),
+		Email:      cast.ToString(is.Context.GetConfig("storage.email", "")),
+		Password:   cast.ToString(is.Context.GetConfig("storage.password", "")),
+		Collection: cast.ToString(is.Context.GetConfig("storage.mongo_collection_name", "")),
+	}
 
 	err := is.loadAddresses()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -120,6 +122,7 @@ func (is *InternalService) handleBlockTxs() error {
 		return err
 	}
 
+	var txArray []interface{}
 	for _, txRes := range blockTxs {
 		if is.config.SkipFailedTxs && txRes.Code != 0 {
 			continue
@@ -139,7 +142,7 @@ func (is *InternalService) handleBlockTxs() error {
 			continue
 		}
 
-		txInfo := bson.M{
+		txArray = append(txArray, map[string]interface{}{
 			"Number": txRes.Height,
 			"Hash":   txRes.Txhash,
 			"From":   from,
@@ -148,12 +151,12 @@ func (is *InternalService) handleBlockTxs() error {
 			"Events": txRes.Events,
 			"Status": txRes.Code,
 			"Ts":     txRes.Timestamp,
-		}
+		})
+	}
 
-		err = is.sendTxsToStorage(txInfo)
-		if err != nil {
-			return err
-		}
+	err = is.sendTxsToStorage(txArray)
+	if err != nil {
+		return err
 	}
 
 	err = is.rewriteLastHandledBlock(is.currentBlock)
@@ -161,8 +164,51 @@ func (is *InternalService) handleBlockTxs() error {
 	return err
 }
 
-func (is *InternalService) sendTxsToStorage(tx bson.M) error {
-	err, _ := is.storage.Put(is.config.CollectionName, tx)
+func (is *InternalService) sendTxsToStorage(txs []interface{}) error {
+	const failedResponseStatus = "NOK"
 
-	return err
+	type SaiStorageResponse struct {
+		Status string                   `json:"Status"`
+		Result []map[string]interface{} `json:"result"`
+		Count  int                      `json:"count"`
+		Error  string                   `json:"error"`
+	}
+
+	storageRequest := adapter.Request{
+		Method: "create",
+		Data: adapter.CreateRequest{
+			Collection: is.storageConfig.Collection,
+			Documents:  txs,
+		},
+	}
+
+	bodyBytes, err := jsoniter.Marshal(&storageRequest)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, is.storageConfig.Url, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Token", is.storageConfig.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	var result = new(SaiStorageResponse)
+	err = jsoniter.NewDecoder(resp.Body).Decode(result)
+	if err != nil {
+		return err
+	}
+
+	if result.Status == failedResponseStatus {
+		return fmt.Errorf(result.Error)
+	}
+
+	return nil
 }
