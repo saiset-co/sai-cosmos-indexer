@@ -171,7 +171,7 @@ func (is *InternalService) sendTxsToStorage(txs []interface{}) error {
 		Status string                   `json:"Status"`
 		Result []map[string]interface{} `json:"result"`
 		Count  int                      `json:"count"`
-		Error  string                   `json:"error"`
+		Error  string                   `json:"Error"`
 	}
 
 	storageRequest := adapter.Request{
