@@ -3,7 +3,7 @@ package internal
 import (
 	"bytes"
 	"errors"
-	"fmt"
+	"github.com/saiset-co/saiCosmosIndexer/utils"
 	"net/http"
 	"os"
 	"strconv"
@@ -33,6 +33,7 @@ type InternalService struct {
 	client        http.Client
 	addresses     map[string]struct{}
 	storageConfig model.StorageConfig
+	notifier      Notifier
 }
 
 func (is *InternalService) Init() {
@@ -52,6 +53,14 @@ func (is *InternalService) Init() {
 		Password:   cast.ToString(is.Context.GetConfig("storage.password", "")),
 		Collection: cast.ToString(is.Context.GetConfig("storage.mongo_collection_name", "")),
 	}
+
+	is.notifier = NewNotifier(
+		cast.ToString(is.Context.GetConfig("notifier.sender_id", "")),
+		cast.ToString(is.Context.GetConfig("notifier.email", "")),
+		cast.ToString(is.Context.GetConfig("notifier.password", "")),
+		cast.ToString(is.Context.GetConfig("notifier.token", "")),
+		cast.ToString(is.Context.GetConfig("notifier.url", "")),
+	)
 
 	err := is.loadAddresses()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -142,7 +151,7 @@ func (is *InternalService) handleBlockTxs() error {
 			continue
 		}
 
-		txArray = append(txArray, map[string]interface{}{
+		txTmp := map[string]interface{}{
 			"Number": txRes.Height,
 			"Hash":   txRes.Txhash,
 			"From":   from,
@@ -151,7 +160,11 @@ func (is *InternalService) handleBlockTxs() error {
 			"Events": txRes.Events,
 			"Status": txRes.Code,
 			"Ts":     txRes.Timestamp,
-		})
+		}
+
+		txArray = append(txArray, txTmp)
+
+		go is.sendTxNotification(txTmp)
 	}
 
 	err = is.sendTxsToStorage(txArray)
@@ -165,15 +178,6 @@ func (is *InternalService) handleBlockTxs() error {
 }
 
 func (is *InternalService) sendTxsToStorage(txs []interface{}) error {
-	const failedResponseStatus = "NOK"
-
-	type SaiStorageResponse struct {
-		Status string                   `json:"Status"`
-		Result []map[string]interface{} `json:"result"`
-		Count  int                      `json:"count"`
-		Error  string                   `json:"Error"`
-	}
-
 	storageRequest := adapter.Request{
 		Method: "create",
 		Data: adapter.CreateRequest{
@@ -187,28 +191,14 @@ func (is *InternalService) sendTxsToStorage(txs []interface{}) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, is.storageConfig.Url, bytes.NewBuffer(bodyBytes))
+	_, err = utils.SaiQuerySender(bytes.NewBuffer(bodyBytes), is.storageConfig.Url, is.storageConfig.Token)
+
+	return err
+}
+
+func (is *InternalService) sendTxNotification(tx interface{}) {
+	err := is.notifier.SendTx(tx)
 	if err != nil {
-		return err
+		logger.Logger.Error("is.notifier.SendTx", zap.Error(err))
 	}
-
-	req.Header.Set("Token", is.storageConfig.Token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	var result = new(SaiStorageResponse)
-	err = jsoniter.NewDecoder(resp.Body).Decode(result)
-	if err != nil {
-		return err
-	}
-
-	if result.Status == failedResponseStatus {
-		return fmt.Errorf(result.Error)
-	}
-
-	return nil
 }
