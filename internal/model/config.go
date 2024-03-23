@@ -6,3 +6,11 @@ type ServiceConfig struct {
 	SkipFailedTxs  bool
 	CollectionName string
 }
+
+type StorageConfig struct {
+	Token      string
+	Url        string
+	Email      string
+	Password   string
+	Collection string
+}

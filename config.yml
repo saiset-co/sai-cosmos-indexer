@@ -13,6 +13,12 @@ storage:
   email: "email"
   password: "pass"
   mongo_collection_name: "col_name"
+notifier:
+  token: "token"
+  url: "url"
+  email: "email"
+  password: "pass"
+  sender_id: "COSMOS"
 
 node_address: "https://sone-node.com"
 start_block: 0
